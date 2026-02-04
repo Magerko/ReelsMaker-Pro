@@ -1,0 +1,37 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+crash_log.log
+
+# FFmpeg binaries (user should download separately)
+ffmpeg/
+
+# OS files
+.DS_Store
+Thumbs.db
+nul
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# Claude
+.claude/
