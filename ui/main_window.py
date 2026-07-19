@@ -27,6 +27,7 @@ from utils.constants import (
 from utils.ffmpeg_utils import (generate_preview, get_video_duration, detect_crop_dimensions,
                                 list_filler_presets, detect_available_codecs)
 from utils.path_utils import resource_path
+from utils import links
 from ui.subtitle_preview_dialog import SubtitlePreviewDialog
 
 
@@ -624,7 +625,10 @@ class ProcessingWidgetContent(QWidget):
 
         self.watermark_label = QLabel()
         self.watermark_label.setText(
-            'Больше программ в Telegram-канале: <a href="https://t.me/magerdev1">@magerdev1</a>')
+            f'Больше программ в Telegram-канале: '
+            f'<a href="{links.TELEGRAM}">@magerdev1</a>'
+            f' · <a href="{links.DONATE}">поддержать</a>'
+            f' · <a href="{links.DONATE_UAH}">в гривнах</a>')
         self.watermark_label.setTextFormat(Qt.RichText)
         self.watermark_label.setOpenExternalLinks(True)
         self.watermark_label.setAlignment(Qt.AlignCenter)
