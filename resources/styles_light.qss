@@ -264,6 +264,16 @@ QSplitter::handle:hover {
     background-color: #0d7c72;
 }
 
+/* Область прокрутки и её содержимое рисуются обычным QWidget, а он берёт фон
+   из системной палитры — на тёмной теме сквозь настройки просвечивала белая
+   подложка. Оба уровня нужны: сама область и вложенная страница. */
+QScrollArea {
+    background-color: #ffffff;
+    border: none;
+}
+QScrollArea > QWidget > QWidget {
+    background-color: #ffffff;
+}
 QScrollBar:vertical {
     background: transparent;
     width: 11px;
