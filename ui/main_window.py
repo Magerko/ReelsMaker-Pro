@@ -240,7 +240,9 @@ class ProcessingWidgetContent(QWidget):
 
         tab_widget.addTab(main_tab, "Меню")
         tab_widget.addTab(transform_tab, "Трансформация")
-        tab_widget.addTab(effects_tab, "Наложение")
+        # Вкладка «Наложение» убрана: разделение экрана и субтитры переехали на
+        # первую, а баннер — к трансформациям. Отдельная вкладка ради одной
+        # редкой настройки только добавляла плотности.
         tab_widget.addTab(audio_tab, "Аудио")
 
         main_tab_layout = QVBoxLayout(main_tab)
@@ -307,8 +309,10 @@ class ProcessingWidgetContent(QWidget):
         preview_layout.addWidget(self.preview_label)
         self.preview_button = QPushButton("Обновить предпросмотр")
         preview_layout.addWidget(self.preview_button)
-        main_tab_layout.addWidget(preview_group)
-        main_tab_layout.addStretch()
+        # Предпросмотр и группы первого уровня добавляются ниже, после того как
+        # они созданы: разделение экрана и субтитры собираются на первой
+        # вкладке, чтобы новичок видел всё нужное на одном экране.
+        self.preview_group = preview_group
 
         # === TRANSFORM TAB ===
         self.crop_group = QGroupBox("Обрезка")
@@ -459,7 +463,7 @@ class ProcessingWidgetContent(QWidget):
         row_split_order.addWidget(self.split_pos_combo, 1)
         split_lay.addLayout(row_split_order)
 
-        effects_tab_layout.addWidget(self.split_group)
+        main_tab_layout.addWidget(self.split_group)
 
         self.overlay_group = QGroupBox("Наложение (баннер)")
         ov_lay = QVBoxLayout(self.overlay_group)
@@ -483,7 +487,7 @@ class ProcessingWidgetContent(QWidget):
         row_pos.addWidget(self.overlay_pos_combo)
         row_pos.addStretch()
         ov_lay.addLayout(row_pos)
-        effects_tab_layout.addWidget(self.overlay_group)
+        transform_tab_layout.addWidget(self.overlay_group)
 
         self.subs_group = QGroupBox("Субтитры")
         subs_main_layout = QVBoxLayout(self.subs_group)
@@ -552,8 +556,9 @@ class ProcessingWidgetContent(QWidget):
         common_style_layout.addStretch(1)
         subs_main_layout.addLayout(common_style_layout)
 
-        effects_tab_layout.addWidget(self.subs_group)
-        effects_tab_layout.addStretch()
+        main_tab_layout.addWidget(self.subs_group)
+        main_tab_layout.addWidget(self.preview_group)
+        main_tab_layout.addStretch()
 
         # === AUDIO TAB ===
         self.mute_group = QGroupBox("Управление звуком")
