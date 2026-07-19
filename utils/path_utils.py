@@ -15,6 +15,18 @@ def _search_roots():
     return [os.path.dirname(os.path.dirname(os.path.abspath(__file__)))]
 
 
+def user_data_dir():
+    """Каталог для того, что программа пишет: логов и временных файлов."""
+    if os.name == 'nt':
+        base = os.environ.get('APPDATA') or os.path.expanduser('~')
+    elif sys.platform == 'darwin':
+        base = os.path.join(os.path.expanduser('~'), 'Library', 'Application Support')
+    else:
+        base = os.environ.get('XDG_DATA_HOME') or os.path.join(
+            os.path.expanduser('~'), '.local', 'share')
+    return os.path.join(base, 'ReelsMakerPro')
+
+
 def resource_path(relative_path):
     roots = _search_roots()
     for root in roots:

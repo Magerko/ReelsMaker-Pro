@@ -33,5 +33,12 @@ build/
 dist/
 *.egg-info/
 
+# ffmpeg binaries fetched at build time, never committed
+vendor/
+
+# Packaged output
+installer_output/
+ReelsMakerPro-windows-*.zip
+
 # Claude
 .claude/
