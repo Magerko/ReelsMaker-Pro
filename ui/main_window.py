@@ -7,7 +7,7 @@ import shutil
 import logging
 
 from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QThread
-from PyQt5.QtGui import QFont, QFontMetrics, QIcon, QPixmap
+from PyQt5.QtGui import QColor, QFont, QFontMetrics, QIcon, QPixmap
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QListWidget, QAbstractItemView, QFileDialog, QSpinBox,
@@ -338,12 +338,20 @@ class ProcessingWidgetContent(QWidget):
         # Галочки вместо выделения: несколько фильтров можно было выбрать и
         # раньше, но только через Ctrl+клик, о чём никто не догадывался.
         self.filter_list.setSelectionMode(QAbstractItemView.NoSelection)
+        # Клик по названию тоже переключает фильтр: попадать в квадратик
+        # размером в двенадцать пикселей — лишняя работа для человека.
+        self.filter_list.itemClicked.connect(self.on_filter_clicked)
         for group_name, names in FILTER_GROUPS:
-            header = QListWidgetItem(group_name)
+            header = QListWidgetItem(group_name.upper())
             header.setFlags(Qt.NoItemFlags)
             font = header.font()
-            font.setWeight(QFont.DemiBold)
+            font.setWeight(QFont.Bold)
+            font.setPointSize(max(1, font.pointSize() - 1))
             header.setFont(font)
+            # Заголовок группы отделяем цветом и фоном, а не только жирностью:
+            # набранный тем же кеглем, он терялся среди самих фильтров.
+            header.setForeground(QColor('#4ecdc4'))
+            header.setBackground(QColor('#20242b'))
             self.filter_list.addItem(header)
             for name in names:
                 if name not in FILTERS:
@@ -808,6 +816,11 @@ class ProcessingWidgetContent(QWidget):
 
     def _level_three_groups(self):
         return (self.zoom_group, self.overlay_group, self.overlay_audio_group)
+
+    def on_filter_clicked(self, item):
+        if not item.data(Qt.UserRole):
+            return
+        item.setCheckState(Qt.Unchecked if item.checkState() == Qt.Checked else Qt.Checked)
 
     def selected_filters(self):
         """Отмеченные фильтры в порядке их следования в списке."""
