@@ -318,6 +318,34 @@ def list_filler_presets() -> List[str]:
     )
 
 
+def build_uniquify_plan(in_path: str) -> Dict:
+    """Разыгрывает незаметные изменения для одного файла.
+
+    Отобраны те, что подтверждаются не только советами в блогах:
+
+    * сдвиг тона и темпа — единственное, про что в исследованиях прямо
+      сказано, что отпечаток звука их не переносит;
+    * срез начала и конца сдвигает временную нарезку целиком;
+    * перекодирование со своим качеством и своей группой кадров меняет
+      каждый байт файла.
+
+    Отражение, поворот и цветокоррекция сюда не входят намеренно: модели
+    поиска копий обучают на этих же преобразованиях, то есть они по замыслу
+    ничего не меняют в описателе. Они остались отдельными фильтрами — на
+    случай, когда нужен именно вид, а не уникальность.
+
+    Начало режем не глубже 0.4 с: первая секунда держит зрителя, и ради
+    уникальности терять её нельзя.
+    """
+    return {
+        'head': round(random.uniform(0.10, 0.40), 3),
+        'tail': round(random.uniform(0.15, 0.60), 3),
+        'pitch': round(random.uniform(0.994, 1.006), 4),
+        'crf': random.randint(19, 23),
+        'gop': random.choice([48, 50, 60, 72, 75]),
+    }
+
+
 def process_single(
         in_path: str,
         out_path: str,
@@ -340,9 +368,13 @@ def process_single(
         filler_path: Optional[str] = None,
         split_content_height: int = 1080,
         content_on_top: bool = True,
+        uniquify: bool = False,
         progress_callback: Optional[Callable[[int], None]] = None,
 ):
     is_gif_input = in_path.lower().endswith('.gif')
+    # Значения разыгрываются на каждый файл заново. Постоянный набор правок
+    # сам становится приметой: по ней вычисляли партии роликов из телеграм-ботов.
+    unique = build_uniquify_plan(in_path) if uniquify else None
     is_gif_overlay = overlay_file and overlay_file.lower().endswith('.gif')
     cmd = []
     input_streams = []
@@ -351,6 +383,8 @@ def process_single(
         input_streams.append({"type": "video", "index": 0, "path": in_path})
         has_real_audio = False
     else:
+        if unique and unique['head'] > 0:
+            cmd.extend(["-ss", f"{unique['head']:.3f}"])
         cmd.extend(["-i", in_path])
         input_streams.append({"type": "video+audio", "index": 0, "path": in_path})
         has_real_audio = True
@@ -538,6 +572,13 @@ def process_single(
         filter_complex_parts.append(f"{last_video_node}{alpha_node}overlay={pos_params}{overlay_node}")
         last_video_node = overlay_node
     filter_complex_parts.append(f"{last_video_node}format=pix_fmts=yuv420p[vout]")
+    if final_audio_node and unique:
+        # Сдвиг тона — единственный приём из отобранных, про который в
+        # исследованиях прямо сказано, что отпечаток звука его не переносит.
+        # Меньше процента на слух не различимо.
+        filter_complex_parts.append(
+            f"{final_audio_node}rubberband=pitch={unique['pitch']}[apitch]")
+        final_audio_node = '[apitch]'
     if final_audio_node:
         filter_complex_parts.append(f"{final_audio_node}anull[aout]")
     fc_string = ";".join(filter(None, filter_complex_parts))
@@ -551,12 +592,22 @@ def process_single(
         if is_gif_input:
             cmd.extend(["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100", "-shortest"])
     cmd.extend(["-c:v", codec])
+    quality = unique['crf'] if unique else 24
     if "nvenc" in codec or "amf" in codec:
-        cmd.extend(["-cq", "24"])
+        cmd.extend(["-cq", str(quality)])
     elif "qsv" in codec:
-        cmd.extend(["-global_quality", "24"])
+        cmd.extend(["-global_quality", str(quality)])
     else:
-        cmd.extend(["-preset", "veryfast", "-crf", "24"])
+        cmd.extend(["-preset", "veryfast", "-crf", str(quality)])
+    if unique:
+        # Размер группы кадров меняет структуру потока, а не картинку.
+        cmd.extend(["-g", str(unique['gop'])])
+        if unique['tail'] > 0:
+            source = get_video_duration(in_path)
+            if source > 0:
+                keep = source - unique['head'] - unique['tail']
+                if keep > 1.0:
+                    cmd.extend(["-t", f"{keep:.3f}"])
     if strip_metadata: cmd.extend(["-map_metadata", "-1", "-map_chapters", "-1"])
     # Залипалка подаётся с -stream_loop -1, поэтому без -shortest рендер не
     # закончится никогда: длину должно задавать основное видео.

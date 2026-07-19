@@ -289,6 +289,20 @@ class ProcessingWidgetContent(QWidget):
         self.output_format_combo.addItems(OUTPUT_FORMATS)
         self.output_format_combo.currentTextChanged.connect(self.on_output_format_changed)
         ofg_layout.addWidget(self.output_format_combo)
+        self.uniquify_checkbox = QCheckBox("Уникализировать при обработке")
+        self.uniquify_checkbox.setToolTip(
+            "Незаметные изменения, свои для каждого файла: срез долей секунды "
+            "с начала и конца, сдвиг тона звука до 0,6%, своё качество "
+            "сжатия и размер группы кадров.")
+        ofg_layout.addWidget(self.uniquify_checkbox)
+        uniquify_hint = QLabel(
+            "Меняет отпечаток файла и звука, на глаз и на слух не заметно. "
+            "Отражение, поворот и цветокоррекцию сюда не включили намеренно: "
+            "модели поиска копий обучены на них и не реагируют.")
+        uniquify_hint.setWordWrap(True)
+        uniquify_hint.setObjectName("subtitleLabel")
+        ofg_layout.addWidget(uniquify_hint)
+
         self.blur_background_checkbox = QCheckBox("Размыть фон")
         self.blur_background_checkbox.setToolTip("Заполняет черные полосы размытой версией видео (только для Reels)")
         self.blur_background_checkbox.setEnabled(False)
@@ -1011,7 +1025,8 @@ class ProcessingWidgetContent(QWidget):
             overlay_volume=self.over_vol_slider.value(),
             filler_path=self.get_filler_path(),
             split_content_height=self.split_layout_combo.currentData(),
-            content_on_top=self.split_pos_combo.currentText() == SPLIT_CONTENT_TOP
+            content_on_top=self.split_pos_combo.currentText() == SPLIT_CONTENT_TOP,
+            uniquify=self.uniquify_checkbox.isChecked()
         )
 
         self.processing_thread.progress.connect(self.on_prog)
