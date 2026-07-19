@@ -140,14 +140,25 @@ def detect_crop_dimensions(path: str) -> Optional[str]:
             "-"
         ]
 
-        # Запускаем процесс и получаем вывод из stderr, где и находится результат cropdetect
+        # Результат cropdetect пишется в stderr.
+        # Флаги скрытия обязательны: без них на каждое обновление
+        # предпросмотра поверх окна мигает консоль.
+        creationflags = 0
+        startupinfo = None
+        if platform.system() == "Windows":
+            creationflags = subprocess.CREATE_NO_WINDOW
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
         process = subprocess.Popen(
             cmd,
             stderr=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
             text=True,
             encoding='utf-8',
-            errors='replace'
+            errors='replace',
+            creationflags=creationflags,
+            startupinfo=startupinfo
         )
         _, stderr_output = process.communicate(timeout=60)
 

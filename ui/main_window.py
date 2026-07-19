@@ -7,20 +7,20 @@ import shutil
 import logging
 
 from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QThread
-from PyQt5.QtGui import QFontMetrics, QIcon, QPixmap
+from PyQt5.QtGui import QFont, QFontMetrics, QIcon, QPixmap
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QListWidget, QAbstractItemView, QFileDialog, QSpinBox,
     QLineEdit, QMessageBox, QProgressBar, QComboBox,
     QGroupBox, QRadioButton, QButtonGroup, QCheckBox, QSplitter, QListWidgetItem,
-    QTabWidget, QMenu, QFrame, QInputDialog, QPlainTextEdit, QSlider, QApplication, QDialog
+    QTabWidget, QMenu, QFrame, QScrollArea, QInputDialog, QPlainTextEdit, QSlider, QApplication, QDialog
 )
 import qtawesome as qta
 
 from workers.worker import Worker
 from utils.file_utils import is_video_file, find_videos_in_folder
 from utils.constants import (
-    FILTERS, OVERLAY_POSITIONS, REELS_FORMAT_NAME, OUTPUT_FORMATS, CODECS,
+    FILTERS, FILTER_GROUPS, OVERLAY_POSITIONS, REELS_FORMAT_NAME, OUTPUT_FORMATS, CODECS,
     SPLIT_LAYOUTS, SPLIT_POSITIONS, SPLIT_CONTENT_TOP, SCENARIOS,
     WHISPER_MODELS, WHISPER_LANGUAGES, APP_NAME, APP_VERSION
 )
@@ -232,6 +232,12 @@ class ProcessingWidgetContent(QWidget):
 
         # Tabs
         tab_widget = QTabWidget()
+        # Ширину вкладки Qt считает по шрифту виджета, а рисует полужирным из
+        # стилей — на «Трансформации» разница в три пикселя срезала левый край
+        # первой буквы. Ставим тот же вес и виджету.
+        tab_font = tab_widget.tabBar().font()
+        tab_font.setWeight(QFont.DemiBold)
+        tab_widget.tabBar().setFont(tab_font)
         self.right_panel.addWidget(tab_widget)
 
         main_tab = QWidget()
@@ -239,12 +245,21 @@ class ProcessingWidgetContent(QWidget):
         effects_tab = QWidget()
         audio_tab = QWidget()
 
-        tab_widget.addTab(main_tab, "Меню")
-        tab_widget.addTab(transform_tab, "Трансформация")
+        # Каждая вкладка внутри прокрутки: настроек много, а экраны бывают
+        # 1366x768 — без неё нижние группы просто не помещались бы в окно.
+        def add_scrollable_tab(page, title):
+            area = QScrollArea()
+            area.setWidgetResizable(True)
+            area.setFrameShape(QFrame.NoFrame)
+            area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            area.setWidget(page)
+            tab_widget.addTab(area, title)
+
+        add_scrollable_tab(main_tab, "Меню")
+        add_scrollable_tab(transform_tab, "Трансформация")
         # Вкладка «Наложение» убрана: разделение экрана и субтитры переехали на
-        # первую, а баннер — к трансформациям. Отдельная вкладка ради одной
-        # редкой настройки только добавляла плотности.
-        tab_widget.addTab(audio_tab, "Аудио")
+        # первую, а баннер — к трансформациям.
+        add_scrollable_tab(audio_tab, "Аудио")
 
         main_tab_layout = QVBoxLayout(main_tab)
         transform_tab_layout = QVBoxLayout(transform_tab)
@@ -264,14 +279,6 @@ class ProcessingWidgetContent(QWidget):
         self.scenario_combo.setToolTip(
             "Готовый набор значений под площадку. Дальше можно ничего не трогать.")
         density_row.addWidget(self.scenario_combo, 1)
-
-        self.more_settings_cb = QCheckBox("Ещё настройки")
-        self.more_settings_cb.setToolTip("Обрезка, фильтры, скорость, звук")
-        density_row.addWidget(self.more_settings_cb)
-
-        self.expert_cb = QCheckBox("Экспертный режим")
-        self.expert_cb.setToolTip("Все настройки без исключения")
-        density_row.addWidget(self.expert_cb)
 
         main_tab_layout.addLayout(density_row)
 
@@ -325,12 +332,33 @@ class ProcessingWidgetContent(QWidget):
 
         self.filter_group = QGroupBox("Фильтры")
         f_lay = QVBoxLayout(self.filter_group)
+        f_lay.addWidget(QLabel(
+            "Можно отметить несколько — они применятся один за другим, сверху вниз."))
         self.filter_list = QListWidget()
-        self.filter_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        for i, fn in enumerate(FILTERS, 1):
-            self.filter_list.addItem(f"{i}. {fn}")
-        self.filter_list.setFixedHeight(220)
+        # Галочки вместо выделения: несколько фильтров можно было выбрать и
+        # раньше, но только через Ctrl+клик, о чём никто не догадывался.
+        self.filter_list.setSelectionMode(QAbstractItemView.NoSelection)
+        for group_name, names in FILTER_GROUPS:
+            header = QListWidgetItem(group_name)
+            header.setFlags(Qt.NoItemFlags)
+            font = header.font()
+            font.setWeight(QFont.DemiBold)
+            header.setFont(font)
+            self.filter_list.addItem(header)
+            for name in names:
+                if name not in FILTERS:
+                    continue
+                item = QListWidgetItem("    " + name)
+                item.setData(Qt.UserRole, name)
+                item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
+                item.setCheckState(Qt.Unchecked)
+                self.filter_list.addItem(item)
+        self.filter_list.setMinimumHeight(300)
         f_lay.addWidget(self.filter_list)
+
+        clear_filters_btn = QPushButton("Снять все фильтры")
+        clear_filters_btn.clicked.connect(self.clear_filters)
+        f_lay.addWidget(clear_filters_btn)
         transform_tab_layout.addWidget(self.filter_group)
 
         self.zoom_group = QGroupBox("Zoom (приближение)")
@@ -649,8 +677,6 @@ class ProcessingWidgetContent(QWidget):
         self.filler_combo.currentIndexChanged.connect(self.on_filler_choice_changed)
         self.filler_browse_btn.clicked.connect(self.on_browse_filler)
 
-        self.more_settings_cb.toggled.connect(self.apply_density)
-        self.expert_cb.toggled.connect(self.apply_density)
         self.scenario_combo.currentIndexChanged.connect(self.apply_scenario)
         # Новичок видит три группы и кнопку «Обработать»; остальное по запросу.
         self.apply_density()
@@ -711,7 +737,7 @@ class ProcessingWidgetContent(QWidget):
         params = {
             'in_path': in_path,
             'out_path': temp_preview_path,
-            'filters': [item.text().split('. ', 1)[1] for item in self.filter_list.selectedItems()],
+            'filters': self.selected_filters(),
             'zoom_p': self.zoom_static_spin.value(),
             'overlay_file': self.overlay_path.text().strip() or None,
             'overlay_pos': self.overlay_pos_combo.currentText(),
@@ -783,15 +809,25 @@ class ProcessingWidgetContent(QWidget):
     def _level_three_groups(self):
         return (self.zoom_group, self.overlay_group, self.overlay_audio_group)
 
+    def selected_filters(self):
+        """Отмеченные фильтры в порядке их следования в списке."""
+        names = []
+        for row in range(self.filter_list.count()):
+            item = self.filter_list.item(row)
+            if item.data(Qt.UserRole) and item.checkState() == Qt.Checked:
+                names.append(item.data(Qt.UserRole))
+        return names
+
+    def clear_filters(self):
+        for row in range(self.filter_list.count()):
+            item = self.filter_list.item(row)
+            if item.data(Qt.UserRole):
+                item.setCheckState(Qt.Unchecked)
+
     def apply_density(self):
-        show_two = self.more_settings_cb.isChecked() or self.expert_cb.isChecked()
-        for group in self._level_two_groups():
-            group.setVisible(show_two)
-        for group in self._level_three_groups():
-            group.setVisible(self.expert_cb.isChecked())
-        # Экспертный режим включает и уровень 2: прятать середину, показывая
-        # самое тонкое, было бы бессмыслицей.
-        self.more_settings_cb.setEnabled(not self.expert_cb.isChecked())
+        """Показывает все настройки: режим один, экспертный."""
+        for group in self._level_two_groups() + self._level_three_groups():
+            group.setVisible(True)
 
     def apply_scenario(self):
         """Заполнить настройки под выбранную площадку одним действием."""
@@ -938,7 +974,7 @@ class ProcessingWidgetContent(QWidget):
 
         self.processing_thread = Worker(
             files=video_files,
-            filters=[item.text().split('. ', 1)[1] for item in self.filter_list.selectedItems()],
+            filters=self.selected_filters(),
             zoom_mode='dynamic' if self.zoom_dynamic_radio.isChecked() else 'static',
             zoom_static=self.zoom_static_spin.value(),
             zoom_min=self.zoom_min_spin.value(),
@@ -1053,7 +1089,15 @@ class VideoUnicApp(QMainWindow):
 
     def init_ui(self):
         self.setWindowTitle(f"{APP_NAME} v{APP_VERSION}")
-        self.setGeometry(100, 100, 1150, 800)
+        # Подгоняемся под экран: 1150x800 не помещается на HD-ноутбуке, где
+        # рабочая область около 1366x730.
+        available = QApplication.primaryScreen().availableGeometry()
+        width = min(1150, available.width() - 80)
+        height = min(800, available.height() - 80)
+        self.resize(width, height)
+        self.move(available.left() + (available.width() - width) // 2,
+                  available.top() + (available.height() - height) // 2)
+        self.setMinimumSize(900, 560)
 
         icon_path = resource_path(os.path.join('resources', 'icon.png'))
         if os.path.exists(icon_path):
