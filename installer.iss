@@ -57,6 +57,10 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "dist\ReelsMakerPro\{#AppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "dist\ReelsMakerPro\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Распознавание речи — отдельный исполняемый файл со своим набором библиотек.
+; Без него не работают автоматические субтитры, а установщик вышел бы неполным
+; молча: разницу видно только по размеру.
+Source: "dist\ReelsMakerPro\transcriber\*"; DestDir: "{app}\transcriber"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 Source: "vendor\FFMPEG-LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 

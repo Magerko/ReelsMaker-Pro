@@ -1,7 +1,13 @@
 import logging
+import os
+import platform
+import subprocess
+import sys
+import threading
 from typing import Callable, Optional
 
 from .ffmpeg_utils import run_ffmpeg
+from .transcribe_cli import WORKER_FLAG
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +43,27 @@ def _format_time(seconds):
     return f"{int(h):02}:{int(m):02}:{int(s):02},{ms:03}"
 
 
+def _worker_command(audio_path, srt_path, model_name, language, words_per_line):
+    """Как запустить дочерний процесс — из сборки или из исходников."""
+    arguments = [
+        WORKER_FLAG,
+        '--audio', audio_path,
+        '--srt', srt_path,
+        '--model', model_name,
+        '--language', language or '',
+        '--words-per-line', str(words_per_line),
+    ]
+    if getattr(sys, 'frozen', False):
+        # Отдельный исполняемый файл со своим набором библиотек. Перезапускать
+        # само приложение нельзя: рядом с ним лежит Qt, Windows подтянет его в
+        # оба процесса, и распознавание снова упадёт.
+        worker = os.path.join(os.path.dirname(os.path.abspath(sys.executable)),
+                              'transcriber', 'rm-transcribe.exe')
+        return [worker] + arguments
+    entry = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'transcribe_cli.py')
+    return [sys.executable, entry] + arguments
+
+
 def generate_srt_from_whisper(
         audio_path: str,
         srt_path: str,
@@ -45,60 +72,55 @@ def generate_srt_from_whisper(
         words_per_line: int,
         progress_callback: Optional[Callable[[int], None]] = None,
 ):
-    # Импорт отложен: подтягивание модели заметно дороже старта приложения.
-    from faster_whisper import WhisperModel
+    """Распознаёт речь и пишет SRT.
 
-    logger.info(f"Loading Whisper model '{model_name}'...")
-    try:
-        # int8 на CPU: та же модель, но без тяжёлой зависимости от torch и
-        # заметно быстрее на обычных машинах без видеокарты.
-        model = WhisperModel(model_name, device="cpu", compute_type="int8")
-    except Exception as e:
+    Работа идёт в отдельном процессе: Qt и ctranslate2 конфликтуют при загрузке
+    нативных библиотек, и в одном процессе с интерфейсом обращение к модели
+    роняет программу без единого сообщения.
+    """
+    command = _worker_command(audio_path, srt_path, model_name, language, words_per_line)
+
+    creationflags = 0
+    if platform.system() == 'Windows':
+        creationflags = subprocess.CREATE_NO_WINDOW
+
+    process = subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        stdin=subprocess.DEVNULL, text=True, encoding='utf-8',
+        errors='replace', bufsize=1, creationflags=creationflags)
+
+    # stdout вычитываем отдельным потоком: иначе дочерний процесс упрётся в
+    # переполненный буфер канала, пока родитель читает stderr, и оба замрут.
+    drained = []
+
+    def drain_stdout():
+        drained.append(process.stdout.read())
+
+    reader = threading.Thread(target=drain_stdout, daemon=True)
+    reader.start()
+
+    failure = None
+    for line in process.stderr:
+        line = line.strip()
+        if line.startswith('PROGRESS ') and progress_callback:
+            try:
+                progress_callback(int(line.split(' ', 1)[1]))
+            except ValueError:
+                pass
+        elif line.startswith('ERROR '):
+            failure = line.split(' ', 1)[1]
+        elif line:
+            logger.info('transcriber: %s', line)
+
+    code = process.wait()
+    reader.join(timeout=5)
+    process.stdout.close()
+    process.stderr.close()
+
+    if code != 0 or failure:
         raise RuntimeError(
-            f"Не удалось загрузить модель Whisper '{model_name}'. "
-            f"При первом запуске она скачивается из интернета. Ошибка: {e}")
-
-    lang_code = None
-    if language and language != "Auto-detect":
-        lang_code = LANGUAGE_CODES.get(language.lower(), language.lower())
-
-    logger.info("Model loaded. Starting transcription...")
-    segments, info = model.transcribe(
-        audio_path, language=lang_code, word_timestamps=True)
-
-    total_duration = getattr(info, "duration", 0) or 0
-    srt_content = ""
-    sub_index = 1
-
-    # segments - генератор: распознавание идёт по мере обхода, поэтому прогресс
-    # можно отдавать прямо здесь.
-    for segment in segments:
-        words = getattr(segment, "words", None)
-        if not words:
-            continue
-
-        for i in range(0, len(words), words_per_line):
-            chunk = words[i:i + words_per_line]
-            if not chunk:
-                continue
-
-            start_time = _format_time(chunk[0].start)
-            end_time = _format_time(chunk[-1].end)
-            text = " ".join(word.word for word in chunk).strip()
-
-            srt_content += f"{sub_index}\n"
-            srt_content += f"{start_time} --> {end_time}\n"
-            srt_content += f"{text}\n\n"
-            sub_index += 1
-
-        if progress_callback and total_duration > 0:
-            progress_callback(min(99, int(segment.end / total_duration * 100)))
-
-    with open(srt_path, "w", encoding="utf-8") as f:
-        f.write(srt_content)
-
-    if progress_callback:
-        progress_callback(100)
+            'Не удалось распознать речь. При первом запуске модель скачивается '
+            'из интернета. Ошибка: %s' % (failure or 'код возврата %d' % code))
 
     logger.info(f"SRT file saved to {srt_path}")
     return srt_path
