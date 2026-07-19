@@ -130,6 +130,40 @@ SPLIT_POSITIONS = [SPLIT_CONTENT_TOP, SPLIT_CONTENT_BOTTOM]
 # Готовые фоновые ролики, лежащие в поставке.
 PRESETS_DIR = "resources/presets"
 
+# Сценарии: один выбор вместо обхода одиннадцати групп настроек.
+# Ключи соответствуют элементам интерфейса, значения — разумные умолчания.
+SCENARIOS = {
+    "Вертикальное видео 9:16": {
+        "output_format": REELS_FORMAT_NAME,
+        "blur_background": True,
+        "auto_crop": True,
+        "split": False,
+        "subtitles": False,
+    },
+    "Вертикальное с субтитрами": {
+        "output_format": REELS_FORMAT_NAME,
+        "blur_background": True,
+        "auto_crop": True,
+        "split": False,
+        "subtitles": True,
+    },
+    "Залипалка — разделение экрана": {
+        "output_format": REELS_FORMAT_NAME,
+        "blur_background": False,
+        "auto_crop": False,
+        "split": True,
+        "subtitles": False,
+    },
+    "Только перекодировать": {
+        "output_format": "Оригинальный",
+        "blur_background": False,
+        "auto_crop": False,
+        "split": False,
+        "subtitles": False,
+    },
+    "С нуля": {},
+}
+
 CODECS = {
     "CPU (H.264 | libx264)": "libx264",
     "NVIDIA (H.264 | h264_nvenc)": "h264_nvenc",

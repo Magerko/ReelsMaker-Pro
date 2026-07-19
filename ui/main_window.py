@@ -21,7 +21,7 @@ from workers.worker import Worker
 from utils.file_utils import is_video_file, find_videos_in_folder
 from utils.constants import (
     FILTERS, OVERLAY_POSITIONS, REELS_FORMAT_NAME, OUTPUT_FORMATS, CODECS,
-    SPLIT_LAYOUTS, SPLIT_POSITIONS, SPLIT_CONTENT_TOP,
+    SPLIT_LAYOUTS, SPLIT_POSITIONS, SPLIT_CONTENT_TOP, SCENARIOS,
     WHISPER_MODELS, WHISPER_LANGUAGES, APP_NAME, APP_VERSION
 )
 from utils.ffmpeg_utils import (generate_preview, get_video_duration, detect_crop_dimensions,
@@ -249,6 +249,29 @@ class ProcessingWidgetContent(QWidget):
         audio_tab_layout = QVBoxLayout(audio_tab)
 
         # === MAIN TAB ===
+        # Одиннадцать групп настроек одинаковой важности пугают новичка.
+        # Обязательное остаётся на виду, остальное открывается по требованию.
+        density_row = QHBoxLayout()
+        density_row.setSpacing(16)
+
+        density_row.addWidget(QLabel("Сценарий:"))
+        self.scenario_combo = QComboBox()
+        for name in SCENARIOS:
+            self.scenario_combo.addItem(name)
+        self.scenario_combo.setToolTip(
+            "Готовый набор значений под площадку. Дальше можно ничего не трогать.")
+        density_row.addWidget(self.scenario_combo, 1)
+
+        self.more_settings_cb = QCheckBox("Ещё настройки")
+        self.more_settings_cb.setToolTip("Обрезка, фильтры, скорость, звук")
+        density_row.addWidget(self.more_settings_cb)
+
+        self.expert_cb = QCheckBox("Экспертный режим")
+        self.expert_cb.setToolTip("Все настройки без исключения")
+        density_row.addWidget(self.expert_cb)
+
+        main_tab_layout.addLayout(density_row)
+
         self.output_format_group = QGroupBox("Формат и кодирование")
         ofg_layout = QVBoxLayout(self.output_format_group)
         ofg_layout.addWidget(QLabel("Формат вывода:"))
@@ -616,6 +639,13 @@ class ProcessingWidgetContent(QWidget):
         btn_clear_ol.clicked.connect(lambda: self.overlay_path.clear())
         self.filler_combo.currentIndexChanged.connect(self.on_filler_choice_changed)
         self.filler_browse_btn.clicked.connect(self.on_browse_filler)
+
+        self.more_settings_cb.toggled.connect(self.apply_density)
+        self.expert_cb.toggled.connect(self.apply_density)
+        self.scenario_combo.currentIndexChanged.connect(self.apply_scenario)
+        # Новичок видит три группы и кнопку «Обработать»; остальное по запросу.
+        self.apply_density()
+        self.apply_scenario()
         self.preview_button.clicked.connect(self.on_update_preview)
         btn_browse_srt.clicked.connect(self.on_browse_srt)
         self.subs_mode_group.buttonClicked.connect(self.on_subs_mode_changed)
@@ -733,6 +763,49 @@ class ProcessingWidgetContent(QWidget):
     def on_clear_list(self):
         self.video_list_widget.clear()
         self.refresh_video_list_display()
+
+    # Уровень 1 остаётся на виду всегда: формат, разделение экрана и субтитры
+    # определяют результат сильнее прочего. Уровень 2 — то, к чему обращаются
+    # изредка. Уровень 3 — тонкая настройка, которая новичку только мешает.
+    def _level_two_groups(self):
+        return (self.crop_group, self.filter_group, self.speed_group,
+                self.mute_group)
+
+    def _level_three_groups(self):
+        return (self.zoom_group, self.overlay_group, self.overlay_audio_group)
+
+    def apply_density(self):
+        show_two = self.more_settings_cb.isChecked() or self.expert_cb.isChecked()
+        for group in self._level_two_groups():
+            group.setVisible(show_two)
+        for group in self._level_three_groups():
+            group.setVisible(self.expert_cb.isChecked())
+        # Экспертный режим включает и уровень 2: прятать середину, показывая
+        # самое тонкое, было бы бессмыслицей.
+        self.more_settings_cb.setEnabled(not self.expert_cb.isChecked())
+
+    def apply_scenario(self):
+        """Заполнить настройки под выбранную площадку одним действием."""
+        preset = SCENARIOS.get(self.scenario_combo.currentText(), {})
+        if not preset:
+            return
+
+        if 'output_format' in preset:
+            self.output_format_combo.setCurrentText(preset['output_format'])
+        if 'blur_background' in preset and self.blur_background_checkbox.isEnabled():
+            self.blur_background_checkbox.setChecked(preset['blur_background'])
+        if 'auto_crop' in preset:
+            self.auto_crop_checkbox.setChecked(preset['auto_crop'])
+        if 'split' in preset:
+            self.split_group.setChecked(preset['split'])
+        if 'subtitles' in preset:
+            # У субтитров режим выбирается переключателями, поэтому включаем
+            # распознавание только когда сценарий его действительно требует.
+            if preset['subtitles']:
+                self.subs_generate_radio.setChecked(True)
+            else:
+                self.subs_off_radio.setChecked(True)
+            self.on_subs_mode_changed()
 
     def on_codecs_detected(self, availability):
         if not availability:
