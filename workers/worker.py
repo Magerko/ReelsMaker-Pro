@@ -148,13 +148,15 @@ class Worker(QThread):
                     self.status_update.emit(f"Извлечение аудио из '{base_name}'...")
                     extract_audio(in_file_path, temp_audio_path)
 
-                    self.status_update.emit(f"Распознавание речи... (может занять много времени)")
+                    self.status_update.emit("Распознавание речи...")
                     generate_srt_from_whisper(
                         audio_path=temp_audio_path,
                         srt_path=srt_path,
                         model_name=self.subtitle_settings.get("model"),
                         language=self.subtitle_settings.get("language"),
-                        words_per_line=self.subtitle_settings.get("words_per_line")
+                        words_per_line=self.subtitle_settings.get("words_per_line"),
+                        progress_callback=lambda p: self.status_update.emit(
+                            f"Распознавание речи... {p}%")
                     )
                     self.file_processing.emit(base_name)
                 elif subtitle_mode == "srt_file":

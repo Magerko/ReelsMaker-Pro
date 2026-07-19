@@ -1,3 +1,7 @@
-PyQt5
-qtawesome
-openai-whisper
+PyQt5==5.15.11
+qtawesome==1.4.2
+
+# faster-whisper вместо openai-whisper: те же модели Whisper, но через
+# ctranslate2 (~115 МБ) вместо torch, который тянул за собой больше гигабайта
+# и раздувал собранное приложение до неприемлемого размера.
+faster-whisper==1.2.1
