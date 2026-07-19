@@ -25,9 +25,21 @@ from utils.constants import (
     WHISPER_MODELS, WHISPER_LANGUAGES, APP_NAME, APP_VERSION
 )
 from utils.ffmpeg_utils import (generate_preview, get_video_duration, detect_crop_dimensions,
-                                list_filler_presets)
+                                list_filler_presets, detect_available_codecs)
 from utils.path_utils import resource_path
 from ui.subtitle_preview_dialog import SubtitlePreviewDialog
+
+
+class CodecProbeWorker(QThread):
+    """Выясняет, какие видеокодировщики доступны на этой машине."""
+    finished_signal = pyqtSignal(dict)
+
+    def run(self):
+        try:
+            self.finished_signal.emit(detect_available_codecs(CODECS))
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"Codec probe failed: {e}")
+            self.finished_signal.emit({})
 
 
 class PreviewWorker(QThread):
@@ -250,9 +262,17 @@ class ProcessingWidgetContent(QWidget):
         ofg_layout.addWidget(self.blur_background_checkbox)
         ofg_layout.addWidget(QLabel("Видеокодек:"))
         self.codec_combo = QComboBox()
-        self.codec_combo.addItems(CODECS.keys())
-        self.codec_combo.setToolTip("Аппаратные кодеки (NVIDIA, Intel, AMD) могут значительно ускорить обработку")
+        for label, codec_value in CODECS.items():
+            # Значение храним в данных пункта: подпись меняется после проверки.
+            self.codec_combo.addItem(label, codec_value)
+        self.codec_combo.setToolTip("Проверка доступных кодеков...")
         ofg_layout.addWidget(self.codec_combo)
+
+        # Какие кодировщики реально работают, выясняем в фоне: каждая проверка
+        # запускает ffmpeg, а на старте это заметная задержка.
+        self.codec_probe = CodecProbeWorker()
+        self.codec_probe.finished_signal.connect(self.on_codecs_detected)
+        self.codec_probe.start()
         main_tab_layout.addWidget(self.output_format_group)
 
         preview_group = QGroupBox("Предпросмотр")
@@ -714,6 +734,37 @@ class ProcessingWidgetContent(QWidget):
         self.video_list_widget.clear()
         self.refresh_video_list_display()
 
+    def on_codecs_detected(self, availability):
+        if not availability:
+            self.codec_combo.setToolTip(
+                "Не удалось проверить кодеки. Если аппаратный не заработает, выберите CPU.")
+            return
+
+        model = self.codec_combo.model()
+        working = []
+        for index in range(self.codec_combo.count()):
+            label = self.codec_combo.itemText(index)
+            if availability.get(label):
+                working.append(index)
+                continue
+            # Оставляем пункт видимым, но невыбираемым: так понятно, что кодек
+            # существует, просто это железо его не поддерживает.
+            item = model.item(index)
+            if item is not None:
+                item.setEnabled(False)
+            self.codec_combo.setItemText(index, f"{label} — нет поддержки")
+
+        if working and self.codec_combo.currentIndex() not in working:
+            self.codec_combo.setCurrentIndex(working[0])
+
+        hardware = [self.codec_combo.itemText(i) for i in working
+                    if not self.codec_combo.itemText(i).startswith("CPU")]
+        if hardware:
+            self.codec_combo.setToolTip("Аппаратное ускорение доступно: " + ", ".join(hardware))
+        else:
+            self.codec_combo.setToolTip(
+                "Аппаратное ускорение на этом компьютере недоступно, обработка идёт на процессоре.")
+
     def on_filler_choice_changed(self):
         # Пустые данные у пункта означают "Свой файл..."
         is_custom = not self.filler_combo.currentData()
@@ -818,7 +869,7 @@ class ProcessingWidgetContent(QWidget):
             output_format=self.output_format_combo.currentText(),
             blur_background=self.blur_background_checkbox.isChecked(),
             strip_metadata=self.parent_window.settings.get('strip_metadata', True),
-            codec=CODECS.get(self.codec_combo.currentText(), "libx264"),
+            codec=self.codec_combo.currentData() or "libx264",
             subtitle_settings=subtitle_settings,
             auto_crop=self.auto_crop_checkbox.isChecked(),
             overlay_audio=self.overlay_audio_path_edit.text().strip() or None,

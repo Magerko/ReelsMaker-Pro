@@ -19,6 +19,8 @@ from .constants import (
 )
 from .path_utils import resource_path
 
+logger = logging.getLogger(__name__)
+
 
 def find_executable(base_path, exe_name):
     if os.path.exists(base_path):
@@ -229,6 +231,40 @@ def get_video_duration(path: str) -> float:
         return float(result.stdout.strip())
     except Exception:
         return 0.0
+
+
+def probe_encoder(codec: str, timeout: int = 20) -> bool:
+    """Проверяет, что кодировщик реально работает на этой машине.
+
+    Списку `ffmpeg -encoders` доверять нельзя: сборки содержат nvenc, qsv и amf
+    одновременно, независимо от установленного железа. Единственный надёжный
+    признак — попытка закодировать кадр.
+    """
+    if not FFMPEG_PATH_EFFECTIVE:
+        return False
+    cmd = [
+        FFMPEG_PATH_EFFECTIVE, "-hide_banner", "-loglevel", "error",
+        "-f", "lavfi", "-i", "color=black:s=256x256:d=0.1",
+        "-frames:v", "1", "-c:v", codec, "-f", "null", "-",
+    ]
+    try:
+        creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        result = subprocess.run(
+            cmd, capture_output=True, timeout=timeout,
+            stdin=subprocess.DEVNULL, creationflags=creationflags)
+        return result.returncode == 0
+    except Exception as e:
+        logger.warning(f"Encoder probe failed for {codec}: {e}")
+        return False
+
+
+def detect_available_codecs(codecs: Dict[str, str]) -> Dict[str, bool]:
+    """Отображение "название в интерфейсе -> доступен ли кодировщик"."""
+    availability = {}
+    for label, codec in codecs.items():
+        availability[label] = probe_encoder(codec)
+        logger.info(f"Encoder {codec}: {'available' if availability[label] else 'unavailable'}")
+    return availability
 
 
 def build_split_screen_filter(
