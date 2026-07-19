@@ -14,7 +14,8 @@ import logging
 
 from .constants import (
     FFMPEG_EXE_PATH, FILTERS, OVERLAY_POSITIONS,
-    REELS_WIDTH, REELS_HEIGHT, REELS_FORMAT_NAME
+    REELS_WIDTH, REELS_HEIGHT, REELS_FORMAT_NAME,
+    PRESETS_DIR, VIDEO_EXTENSIONS
 )
 from .path_utils import resource_path
 
@@ -230,6 +231,46 @@ def get_video_duration(path: str) -> float:
         return 0.0
 
 
+def build_split_screen_filter(
+        content_node: str,
+        filler_node: str,
+        content_height: int,
+        content_on_top: bool,
+) -> str:
+    """Складывает две панели в вертикальный кадр 1080x1920.
+
+    Обе панели кадрируются по центру под свою высоту, а не вписываются с
+    полями: залипалку принято показывать во всю ширину, без чёрных краёв.
+    """
+    target_w, target_h = REELS_WIDTH, REELS_HEIGHT
+    content_h = max(2, min(target_h - 2, int(content_height)))
+    content_h -= content_h % 2  # yuv420p не принимает нечётные размеры
+    filler_h = target_h - content_h
+
+    # setsar=1 обязателен: при разном пиксельном соотношении vstack
+    # отказывается склеивать панели.
+    panels = (
+        f"{content_node}scale={target_w}:{content_h}:force_original_aspect_ratio=increase,"
+        f"crop={target_w}:{content_h},setsar=1[sp_content];"
+        f"{filler_node}scale={target_w}:{filler_h}:force_original_aspect_ratio=increase,"
+        f"crop={target_w}:{filler_h},setsar=1[sp_filler];"
+    )
+    order = "[sp_content][sp_filler]" if content_on_top else "[sp_filler][sp_content]"
+    return panels + f"{order}vstack=inputs=2[formatted]"
+
+
+def list_filler_presets() -> List[str]:
+    """Пути к фоновым роликам, поставляемым с программой."""
+    folder = resource_path(PRESETS_DIR)
+    if not os.path.isdir(folder):
+        return []
+    return sorted(
+        os.path.join(folder, name)
+        for name in os.listdir(folder)
+        if os.path.splitext(name)[1].lower() in VIDEO_EXTENSIONS
+    )
+
+
 def process_single(
         in_path: str,
         out_path: str,
@@ -249,6 +290,9 @@ def process_single(
         overlay_audio_path: Optional[str] = None,
         original_volume: float = 1.0,
         overlay_volume: float = 1.0,
+        filler_path: Optional[str] = None,
+        split_content_height: int = 1080,
+        content_on_top: bool = True,
         progress_callback: Optional[Callable[[int], None]] = None,
 ):
     is_gif_input = in_path.lower().endswith('.gif')
@@ -265,6 +309,17 @@ def process_single(
         has_real_audio = True
     main_video_stream_label = f"[0:v]"
     main_audio_stream_label = f"[0:a]" if has_real_audio else None
+
+    # Фоновый ролик для разделения экрана. Зацикливаем: залипалки обычно
+    # короче исходного видео, а обрывать картинку на середине нельзя.
+    # Длину ограничит -shortest по основному видео.
+    filler_stream_label = None
+    if filler_path and os.path.exists(filler_path):
+        filler_index = len(input_streams)
+        cmd.extend(["-stream_loop", "-1", "-i", filler_path])
+        input_streams.append({"type": "filler", "index": filler_index, "path": filler_path})
+        filler_stream_label = f"[{filler_index}:v]"
+
     overlay_stream_label = None
     if overlay_file and os.path.exists(overlay_file):
         overlay_input_index = len(input_streams)
@@ -292,8 +347,14 @@ def process_single(
         node_idx += 1
     target_w, target_h = REELS_WIDTH, REELS_HEIGHT
     is_reels_format = (output_format == REELS_FORMAT_NAME)
+    use_split_screen = bool(filler_stream_label) and is_reels_format
     if is_reels_format:
-        if blur_background:
+        if use_split_screen:
+            filter_complex_parts.append(
+                build_split_screen_filter(
+                    last_video_node, filler_stream_label,
+                    split_content_height, content_on_top))
+        elif blur_background:
             filter_complex_parts.append(
                 f"{last_video_node}split[original][original_copy];"
                 f"[original_copy]scale={target_w}:{target_h}:force_original_aspect_ratio=increase,"
@@ -450,7 +511,9 @@ def process_single(
     else:
         cmd.extend(["-preset", "veryfast", "-crf", "24"])
     if strip_metadata: cmd.extend(["-map_metadata", "-1", "-map_chapters", "-1"])
-    if not is_gif_input and not overlay_audio_path:
+    # Залипалка подаётся с -stream_loop -1, поэтому без -shortest рендер не
+    # закончится никогда: длину должно задавать основное видео.
+    if use_split_screen or (not is_gif_input and not overlay_audio_path):
         cmd.append("-shortest")
     final_cmd = ["-y"] + cmd
     final_cmd.append(out_path)
@@ -467,7 +530,10 @@ def generate_preview(
         overlay_pos: str,
         output_format: str,
         blur_background: bool,
-        crop_filter: Optional[str] = None
+        crop_filter: Optional[str] = None,
+        filler_path: Optional[str] = None,
+        split_content_height: int = 1080,
+        content_on_top: bool = True
 ):
     is_gif_input = in_path.lower().endswith('.gif')
     duration = get_video_duration(in_path)
@@ -476,12 +542,18 @@ def generate_preview(
     if not is_gif_input:
         cmd.extend(["-ss", str(mid_point)])
     input_files = ["-i", in_path]
+    has_filler = bool(filler_path) and os.path.exists(filler_path)
+    if has_filler:
+        input_files.extend(["-i", filler_path])
     if overlay_file and os.path.exists(overlay_file):
         input_files.extend(["-i", overlay_file])
     cmd.extend(input_files)
     filter_complex_parts = []
     main_video_stream_label = "[0:v]"
-    overlay_stream_label = "[1:v]" if overlay_file and os.path.exists(overlay_file) else None
+    filler_stream_label = "[1:v]" if has_filler else None
+    overlay_index = 2 if has_filler else 1
+    overlay_stream_label = (f"[{overlay_index}:v]"
+                            if overlay_file and os.path.exists(overlay_file) else None)
     last_video_node = main_video_stream_label
     node_idx = 0
     if crop_filter:
@@ -492,7 +564,12 @@ def generate_preview(
     target_w, target_h = REELS_WIDTH, REELS_HEIGHT
     is_reels_format = (output_format == REELS_FORMAT_NAME)
     if is_reels_format:
-        if blur_background:
+        if filler_stream_label:
+            filter_complex_parts.append(
+                build_split_screen_filter(
+                    last_video_node, filler_stream_label,
+                    split_content_height, content_on_top))
+        elif blur_background:
             filter_complex_parts.append(
                 f"{last_video_node}split[original][original_copy];"
                 f"[original_copy]scale={target_w}:{target_h}:force_original_aspect_ratio=increase,"

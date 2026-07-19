@@ -114,6 +114,22 @@ REELS_HEIGHT = 1920
 REELS_FORMAT_NAME = f"Reels/TikTok ({REELS_WIDTH}x{REELS_HEIGHT})"
 OUTPUT_FORMATS = ["Оригинальный", REELS_FORMAT_NAME]
 
+# Разделение экрана ("залипалка"): в одной половине кадра — исходное видео,
+# в другой — зацикленный фоновый ролик. Значение словаря — высота панели с
+# контентом; залипалке достаётся остаток от 1920 px.
+SPLIT_LAYOUTS = {
+    "Квадрат 1:1 — контент 1080, залипалка 840": 1080,
+    "Поровну — 960 и 960": 960,
+    "Больше контента — 1280 и 640": 1280,
+    "Больше залипалки — 840 и 1080": 840,
+}
+SPLIT_CONTENT_TOP = "Контент сверху, залипалка снизу"
+SPLIT_CONTENT_BOTTOM = "Залипалка сверху, контент снизу"
+SPLIT_POSITIONS = [SPLIT_CONTENT_TOP, SPLIT_CONTENT_BOTTOM]
+
+# Готовые фоновые ролики, лежащие в поставке.
+PRESETS_DIR = "resources/presets"
+
 CODECS = {
     "CPU (H.264 | libx264)": "libx264",
     "NVIDIA (H.264 | h264_nvenc)": "h264_nvenc",

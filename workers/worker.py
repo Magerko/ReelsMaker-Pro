@@ -42,6 +42,9 @@ class Worker(QThread):
             overlay_audio: Optional[str],
             original_volume: int,
             overlay_volume: int,
+            filler_path: Optional[str] = None,
+            split_content_height: int = 1080,
+            content_on_top: bool = True,
     ):
         super().__init__()
         self.files = list(files)
@@ -67,6 +70,9 @@ class Worker(QThread):
         self.overlay_audio = overlay_audio
         self.original_volume = original_volume / 100.0
         self.overlay_volume = overlay_volume / 100.0
+        self.filler_path = filler_path
+        self.split_content_height = split_content_height
+        self.content_on_top = content_on_top
         self._is_running = True
         self.output_paths = []
 
@@ -178,6 +184,9 @@ class Worker(QThread):
                     overlay_audio_path=self.overlay_audio,
                     original_volume=self.original_volume,
                     overlay_volume=self.overlay_volume,
+                    filler_path=self.filler_path,
+                    split_content_height=self.split_content_height,
+                    content_on_top=self.content_on_top,
                     progress_callback=self.file_progress.emit
                 )
                 self.output_paths.append(out_file_path)

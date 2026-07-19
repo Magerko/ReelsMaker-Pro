@@ -21,9 +21,11 @@ from workers.worker import Worker
 from utils.file_utils import is_video_file, find_videos_in_folder
 from utils.constants import (
     FILTERS, OVERLAY_POSITIONS, REELS_FORMAT_NAME, OUTPUT_FORMATS, CODECS,
+    SPLIT_LAYOUTS, SPLIT_POSITIONS, SPLIT_CONTENT_TOP,
     WHISPER_MODELS, WHISPER_LANGUAGES, APP_NAME, APP_VERSION
 )
-from utils.ffmpeg_utils import generate_preview, get_video_duration, detect_crop_dimensions
+from utils.ffmpeg_utils import (generate_preview, get_video_duration, detect_crop_dimensions,
+                                list_filler_presets)
 from utils.path_utils import resource_path
 from ui.subtitle_preview_dialog import SubtitlePreviewDialog
 
@@ -367,6 +369,55 @@ class ProcessingWidgetContent(QWidget):
         transform_tab_layout.addStretch()
 
         # === EFFECTS TAB ===
+        self.split_group = QGroupBox("Разделение экрана (залипалка)")
+        self.split_group.setCheckable(True)
+        self.split_group.setChecked(False)
+        split_lay = QVBoxLayout(self.split_group)
+
+        split_hint = QLabel(
+            "Кадр делится на две панели: ваш контент и зацикленное фоновое видео. "
+            "Требуется формат Reels/TikTok.")
+        split_hint.setWordWrap(True)
+        split_lay.addWidget(split_hint)
+
+        row_filler = QHBoxLayout()
+        row_filler.addWidget(QLabel("Залипалка:"))
+        self.filler_combo = QComboBox()
+        for preset in list_filler_presets():
+            self.filler_combo.addItem(os.path.splitext(os.path.basename(preset))[0], preset)
+        self.filler_combo.addItem("Свой файл...", "")
+        row_filler.addWidget(self.filler_combo, 1)
+        split_lay.addLayout(row_filler)
+
+        row_custom = QHBoxLayout()
+        self.filler_path_edit = QLineEdit()
+        self.filler_path_edit.setPlaceholderText("Путь к своему видео...")
+        self.filler_browse_btn = QPushButton("Обзор")
+        row_custom.addWidget(self.filler_path_edit)
+        row_custom.addWidget(self.filler_browse_btn)
+        self.filler_custom_widget = QWidget()
+        self.filler_custom_widget.setLayout(row_custom)
+        self.filler_custom_widget.setVisible(False)
+        split_lay.addWidget(self.filler_custom_widget)
+
+        row_split_layout = QHBoxLayout()
+        row_split_layout.addWidget(QLabel("Пропорции:"))
+        self.split_layout_combo = QComboBox()
+        for layout_name in SPLIT_LAYOUTS:
+            self.split_layout_combo.addItem(layout_name, SPLIT_LAYOUTS[layout_name])
+        row_split_layout.addWidget(self.split_layout_combo, 1)
+        split_lay.addLayout(row_split_layout)
+
+        row_split_order = QHBoxLayout()
+        row_split_order.addWidget(QLabel("Порядок:"))
+        self.split_pos_combo = QComboBox()
+        for position in SPLIT_POSITIONS:
+            self.split_pos_combo.addItem(position)
+        row_split_order.addWidget(self.split_pos_combo, 1)
+        split_lay.addLayout(row_split_order)
+
+        effects_tab_layout.addWidget(self.split_group)
+
         self.overlay_group = QGroupBox("Наложение (баннер)")
         ov_lay = QVBoxLayout(self.overlay_group)
         row_ol = QHBoxLayout()
@@ -543,6 +594,8 @@ class ProcessingWidgetContent(QWidget):
         btn_clear.clicked.connect(self.on_clear_list)
         btn_ol.clicked.connect(self.on_select_overlay)
         btn_clear_ol.clicked.connect(lambda: self.overlay_path.clear())
+        self.filler_combo.currentIndexChanged.connect(self.on_filler_choice_changed)
+        self.filler_browse_btn.clicked.connect(self.on_browse_filler)
         self.preview_button.clicked.connect(self.on_update_preview)
         btn_browse_srt.clicked.connect(self.on_browse_srt)
         self.subs_mode_group.buttonClicked.connect(self.on_subs_mode_changed)
@@ -605,7 +658,10 @@ class ProcessingWidgetContent(QWidget):
             'overlay_pos': self.overlay_pos_combo.currentText(),
             'output_format': self.output_format_combo.currentText(),
             'blur_background': self.blur_background_checkbox.isChecked(),
-            'crop_filter': crop_filter
+            'crop_filter': crop_filter,
+            'filler_path': self.get_filler_path(),
+            'split_content_height': self.split_layout_combo.currentData(),
+            'content_on_top': self.split_pos_combo.currentText() == SPLIT_CONTENT_TOP
         }
         self.set_controls_enabled(False)
         self.preview_label.setText("Генерация предпросмотра...")
@@ -657,6 +713,24 @@ class ProcessingWidgetContent(QWidget):
     def on_clear_list(self):
         self.video_list_widget.clear()
         self.refresh_video_list_display()
+
+    def on_filler_choice_changed(self):
+        # Пустые данные у пункта означают "Свой файл..."
+        is_custom = not self.filler_combo.currentData()
+        self.filler_custom_widget.setVisible(is_custom)
+
+    def on_browse_filler(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Выберите видео для залипалки", "",
+            "Видео (*.mp4 *.mov *.avi *.mkv *.flv *.wmv);;Все файлы (*)")
+        if path:
+            self.filler_path_edit.setText(path)
+
+    def get_filler_path(self):
+        """Путь к фоновому ролику или None, если разделение экрана выключено."""
+        if not self.split_group.isChecked():
+            return None
+        return self.filler_combo.currentData() or self.filler_path_edit.text().strip() or None
 
     def on_select_overlay(self):
         overlay_filter = "Файлы наложения (*.png *.jpg *.jpeg *.bmp *.gif);;Все файлы (*)"
@@ -749,7 +823,10 @@ class ProcessingWidgetContent(QWidget):
             auto_crop=self.auto_crop_checkbox.isChecked(),
             overlay_audio=self.overlay_audio_path_edit.text().strip() or None,
             original_volume=self.orig_vol_slider.value(),
-            overlay_volume=self.over_vol_slider.value()
+            overlay_volume=self.over_vol_slider.value(),
+            filler_path=self.get_filler_path(),
+            split_content_height=self.split_layout_combo.currentData(),
+            content_on_top=self.split_pos_combo.currentText() == SPLIT_CONTENT_TOP
         )
 
         self.processing_thread.progress.connect(self.on_prog)
