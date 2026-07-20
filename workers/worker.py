@@ -190,7 +190,9 @@ class Worker(QThread):
                     overlay_audio_path=self.overlay_audio,
                     original_volume=self.original_volume,
                     overlay_volume=self.overlay_volume,
-                    filler_path=self.filler_path,
+                    filler_path=(pick_random_filler()
+                                 if self.filler_path == RANDOM_FILLER
+                                 else self.filler_path),
                     split_content_height=self.split_content_height,
                     content_on_top=self.content_on_top,
                     uniquify=self.uniquify,

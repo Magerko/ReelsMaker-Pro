@@ -306,16 +306,34 @@ def build_split_screen_filter(
     return panels + f"{order}vstack=inputs=2[formatted]"
 
 
+def user_presets_dir() -> str:
+    """Папка, куда человек кладёт свои залипалки.
+
+    Отдельная от поставочной: та лежит внутри установленной программы и
+    очищается при обновлении, а сюда можно складывать своё надолго.
+    """
+    from .path_utils import user_data_dir
+    return os.path.join(user_data_dir(), 'presets')
+
+
 def list_filler_presets() -> List[str]:
-    """Пути к фоновым роликам, поставляемым с программой."""
-    folder = resource_path(PRESETS_DIR)
-    if not os.path.isdir(folder):
-        return []
-    return sorted(
-        os.path.join(folder, name)
-        for name in os.listdir(folder)
-        if os.path.splitext(name)[1].lower() in VIDEO_EXTENSIONS
-    )
+    """Фоновые ролики: и поставочные, и добавленные человеком."""
+    found = []
+    for folder in (resource_path(PRESETS_DIR), user_presets_dir()):
+        if not os.path.isdir(folder):
+            continue
+        found.extend(
+            os.path.join(folder, name)
+            for name in os.listdir(folder)
+            if os.path.splitext(name)[1].lower() in VIDEO_EXTENSIONS
+        )
+    return sorted(found, key=lambda path: os.path.basename(path).lower())
+
+
+def pick_random_filler() -> Optional[str]:
+    """Случайный фоновый ролик или None, если библиотека пуста."""
+    presets = list_filler_presets()
+    return random.choice(presets) if presets else None
 
 
 def build_uniquify_plan(in_path: str, methods: Optional[Dict] = None) -> Dict:

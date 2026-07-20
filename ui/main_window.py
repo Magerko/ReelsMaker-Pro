@@ -4,6 +4,7 @@ import random
 import tempfile
 import uuid
 import shutil
+import subprocess
 import logging
 
 from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QThread
@@ -21,11 +22,12 @@ from workers.worker import Worker
 from utils.file_utils import is_video_file, find_videos_in_folder
 from utils.constants import (
     FILTERS, FILTER_GROUPS, OVERLAY_POSITIONS, REELS_FORMAT_NAME, OUTPUT_FORMATS, CODECS,
-    SPLIT_LAYOUTS, SPLIT_POSITIONS, SPLIT_CONTENT_TOP, SCENARIOS,
+    SPLIT_LAYOUTS, SPLIT_POSITIONS, SPLIT_CONTENT_TOP, SCENARIOS, RANDOM_FILLER,
     WHISPER_MODELS, WHISPER_LANGUAGES, APP_NAME, APP_VERSION
 )
 from utils.ffmpeg_utils import (generate_preview, get_video_duration, detect_crop_dimensions,
-                                list_filler_presets, detect_available_codecs)
+                                list_filler_presets, detect_available_codecs,
+                                user_presets_dir)
 from utils.path_utils import resource_path
 from utils import links
 from ui.subtitle_preview_dialog import SubtitlePreviewDialog
@@ -541,10 +543,20 @@ class ProcessingWidgetContent(QWidget):
         row_filler = QHBoxLayout()
         row_filler.addWidget(QLabel("Залипалка:"))
         self.filler_combo = QComboBox()
+        self.filler_combo.addItem("Случайная — разная для каждого видео", RANDOM_FILLER)
         for preset in list_filler_presets():
             self.filler_combo.addItem(os.path.splitext(os.path.basename(preset))[0], preset)
         self.filler_combo.addItem("Свой файл...", "")
         row_filler.addWidget(self.filler_combo, 1)
+
+        # Библиотека пополняется своей папкой рядом с настройками: та, что в
+        # поставке, лежит внутри программы и очищается при обновлении.
+        self.filler_folder_btn = QPushButton("Папка залипалок")
+        self.filler_folder_btn.setToolTip(
+            "Открывает папку, куда можно положить свои ролики. Они появятся "
+            "в списке после перезапуска и будут участвовать в случайном выборе.")
+        self.filler_folder_btn.clicked.connect(self.on_open_filler_folder)
+        row_filler.addWidget(self.filler_folder_btn)
         split_lay.addLayout(row_filler)
 
         row_custom = QHBoxLayout()
@@ -995,6 +1007,21 @@ class ProcessingWidgetContent(QWidget):
         # Пустые данные у пункта означают "Свой файл..."
         is_custom = not self.filler_combo.currentData()
         self.filler_custom_widget.setVisible(is_custom)
+
+    def on_open_filler_folder(self):
+        """Открывает папку со своими залипалками, создавая её при необходимости."""
+        folder = user_presets_dir()
+        try:
+            os.makedirs(folder, exist_ok=True)
+        except Exception as error:
+            QMessageBox.warning(self, "Не удалось открыть папку", str(error))
+            return
+        if sys.platform.startswith('win'):
+            os.startfile(folder)
+        elif sys.platform == 'darwin':
+            subprocess.Popen(['open', folder])
+        else:
+            subprocess.Popen(['xdg-open', folder])
 
     def on_browse_filler(self):
         path, _ = QFileDialog.getOpenFileName(
