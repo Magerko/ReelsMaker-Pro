@@ -201,6 +201,23 @@ QCheckBox::indicator:disabled {
     background-color: #ffffff;
     border-color: #d5d9e0;
 }
+/* Включатель у заголовка группы — ещё один отдельный элемент, третий по счёту
+   после QCheckBox и QListWidget. Без своих правил он тоже чёрный по чёрному. */
+QGroupBox::indicator {
+    width: 15px;
+    height: 15px;
+    border: 1px solid #b6bcc6;
+    border-radius: 4px;
+    background-color: #fafbfc;
+}
+QGroupBox::indicator:hover {
+    border-color: #0f8378;
+}
+QGroupBox::indicator:checked {
+    background-color: #0d7c72;
+    border-color: #0f8378;
+}
+
 /* Маркеры в списках — это QListWidget::indicator, отдельный элемент от
    QCheckBox::indicator. Без своих правил он рисуется системным стилем и на
    тёмном фоне выходит чёрным по чёрному. */
