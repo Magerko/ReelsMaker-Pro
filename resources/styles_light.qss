@@ -201,6 +201,23 @@ QCheckBox::indicator:disabled {
     background-color: #ffffff;
     border-color: #d5d9e0;
 }
+/* Маркеры в списках — это QListWidget::indicator, отдельный элемент от
+   QCheckBox::indicator. Без своих правил он рисуется системным стилем и на
+   тёмном фоне выходит чёрным по чёрному. */
+QListWidget::indicator {
+    width: 15px;
+    height: 15px;
+    border: 1px solid #b6bcc6;
+    border-radius: 4px;
+    background-color: #fafbfc;
+}
+QListWidget::indicator:hover {
+    border-color: #0f8378;
+}
+QListWidget::indicator:checked {
+    background-color: #0d7c72;
+    border-color: #0f8378;
+}
 /* Отмеченная, но неактивная галочка. Без этого правила предыдущее затирает
    заливку, и внутри выключенной группы выбор выглядит потерянным. */
 QCheckBox::indicator:checked:disabled,
