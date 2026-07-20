@@ -318,7 +318,7 @@ def list_filler_presets() -> List[str]:
     )
 
 
-def build_uniquify_plan(in_path: str) -> Dict:
+def build_uniquify_plan(in_path: str, methods: Optional[Dict] = None) -> Dict:
     """Разыгрывает незаметные изменения для одного файла.
 
     Отобраны те, что подтверждаются не только советами в блогах:
@@ -337,12 +337,18 @@ def build_uniquify_plan(in_path: str) -> Dict:
     Начало режем не глубже 0.4 с: первая секунда держит зрителя, и ради
     уникальности терять её нельзя.
     """
+    on = methods or {}
+
+    def enabled(name, default=True):
+        return on.get(name, default)
+
     return {
-        'head': round(random.uniform(0.10, 0.40), 3),
-        'tail': round(random.uniform(0.15, 0.60), 3),
-        'pitch': round(random.uniform(0.994, 1.006), 4),
-        'crf': random.randint(19, 23),
-        'gop': random.choice([48, 50, 60, 72, 75]),
+        'head': round(random.uniform(0.10, 0.40), 3) if enabled('trim') else 0.0,
+        'tail': round(random.uniform(0.15, 0.60), 3) if enabled('trim') else 0.0,
+        'pitch': round(random.uniform(0.994, 1.006), 4) if enabled('pitch') else 1.0,
+        'speed': round(random.uniform(0.97, 1.03), 4) if enabled('speed', False) else 1.0,
+        'crf': random.randint(19, 23) if enabled('encode') else 24,
+        'gop': random.choice([48, 50, 60, 72, 75]) if enabled('encode') else 0,
     }
 
 
@@ -369,12 +375,13 @@ def process_single(
         split_content_height: int = 1080,
         content_on_top: bool = True,
         uniquify: bool = False,
+        uniquify_methods: Optional[Dict] = None,
         progress_callback: Optional[Callable[[int], None]] = None,
 ):
     is_gif_input = in_path.lower().endswith('.gif')
     # Значения разыгрываются на каждый файл заново. Постоянный набор правок
     # сам становится приметой: по ней вычисляли партии роликов из телеграм-ботов.
-    unique = build_uniquify_plan(in_path) if uniquify else None
+    unique = build_uniquify_plan(in_path, uniquify_methods) if uniquify else None
     is_gif_overlay = overlay_file and overlay_file.lower().endswith('.gif')
     cmd = []
     input_streams = []
@@ -527,6 +534,10 @@ def process_single(
         last_video_node = new_node_label
 
     speed_factor = speed_p / 100.0
+    if unique and abs(unique['speed'] - 1.0) > 1e-6 and abs(speed_factor - 1.0) <= 1e-5:
+        # Разброс скорости применяем только когда человек не задал её сам:
+        # его настройка важнее случайной.
+        speed_factor = unique['speed']
     audio_nodes_to_mix = []
     final_audio_node = None
     if has_real_audio and not mute_audio:
@@ -572,7 +583,7 @@ def process_single(
         filter_complex_parts.append(f"{last_video_node}{alpha_node}overlay={pos_params}{overlay_node}")
         last_video_node = overlay_node
     filter_complex_parts.append(f"{last_video_node}format=pix_fmts=yuv420p[vout]")
-    if final_audio_node and unique:
+    if final_audio_node and unique and abs(unique['pitch'] - 1.0) > 1e-6:
         # Сдвиг тона — единственный приём из отобранных, про который в
         # исследованиях прямо сказано, что отпечаток звука его не переносит.
         # Меньше процента на слух не различимо.
@@ -601,7 +612,8 @@ def process_single(
         cmd.extend(["-preset", "veryfast", "-crf", str(quality)])
     if unique:
         # Размер группы кадров меняет структуру потока, а не картинку.
-        cmd.extend(["-g", str(unique['gop'])])
+        if unique['gop']:
+            cmd.extend(["-g", str(unique['gop'])])
         if unique['tail'] > 0:
             source = get_video_duration(in_path)
             if source > 0:

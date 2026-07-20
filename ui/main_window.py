@@ -283,26 +283,17 @@ class ProcessingWidgetContent(QWidget):
         main_tab_layout.addLayout(density_row)
 
         self.output_format_group = QGroupBox("Формат и кодирование")
+
+        self.output_format_group.setToolTip(
+
+
+            "Размер кадра, кодек и заливка полей.\n\nReels/TikTok приводит видео к 1080x1920. Размытый фон заполняет чёрные поля размытой копией кадра.")
         ofg_layout = QVBoxLayout(self.output_format_group)
         ofg_layout.addWidget(QLabel("Формат вывода:"))
         self.output_format_combo = QComboBox()
         self.output_format_combo.addItems(OUTPUT_FORMATS)
         self.output_format_combo.currentTextChanged.connect(self.on_output_format_changed)
         ofg_layout.addWidget(self.output_format_combo)
-        self.uniquify_checkbox = QCheckBox("Уникализировать при обработке")
-        self.uniquify_checkbox.setToolTip(
-            "Незаметные изменения, свои для каждого файла: срез долей секунды "
-            "с начала и конца, сдвиг тона звука до 0,6%, своё качество "
-            "сжатия и размер группы кадров.")
-        ofg_layout.addWidget(self.uniquify_checkbox)
-        uniquify_hint = QLabel(
-            "Меняет отпечаток файла и звука, на глаз и на слух не заметно. "
-            "Отражение, поворот и цветокоррекцию сюда не включили намеренно: "
-            "модели поиска копий обучены на них и не реагируют.")
-        uniquify_hint.setWordWrap(True)
-        uniquify_hint.setObjectName("subtitleLabel")
-        ofg_layout.addWidget(uniquify_hint)
-
         self.blur_background_checkbox = QCheckBox("Размыть фон")
         self.blur_background_checkbox.setToolTip("Заполняет черные полосы размытой версией видео (только для Reels)")
         self.blur_background_checkbox.setEnabled(False)
@@ -323,6 +314,11 @@ class ProcessingWidgetContent(QWidget):
         main_tab_layout.addWidget(self.output_format_group)
 
         preview_group = QGroupBox("Предпросмотр")
+
+        preview_group.setToolTip(
+
+
+            "Кадр из середины видео со всеми применёнными настройками.\n\nПоказывает результат до обработки всей подборки.")
         preview_layout = QVBoxLayout(preview_group)
         self.preview_label = QLabel("Выберите видео и нажмите 'Обновить'")
         self.preview_label.setObjectName("previewLabel")
@@ -338,6 +334,9 @@ class ProcessingWidgetContent(QWidget):
 
         # === TRANSFORM TAB ===
         self.crop_group = QGroupBox("Обрезка")
+        self.crop_group.setToolTip(
+
+            "Убирает чёрные поля по краям исходника.\n\nГраницы определяются автоматически по нескольким секундам в середине.")
         crop_layout = QVBoxLayout(self.crop_group)
         self.auto_crop_checkbox = QCheckBox("Обрезать черные полосы (интеллектуально)")
         self.auto_crop_checkbox.setToolTip("Автоматически определяет и обрезает киношные черные полосы в видео")
@@ -345,9 +344,12 @@ class ProcessingWidgetContent(QWidget):
         transform_tab_layout.addWidget(self.crop_group)
 
         self.filter_group = QGroupBox("Фильтры")
+
+        self.filter_group.setToolTip(
+
+
+            "Можно отметить несколько — применятся один за другим, сверху вниз.\n\nКлик по названию переключает фильтр.")
         f_lay = QVBoxLayout(self.filter_group)
-        f_lay.addWidget(QLabel(
-            "Можно отметить несколько — они применятся один за другим, сверху вниз."))
         self.filter_list = QListWidget()
         # Галочки вместо выделения: несколько фильтров можно было выбрать и
         # раньше, но только через Ctrl+клик, о чём никто не догадывался.
@@ -383,7 +385,62 @@ class ProcessingWidgetContent(QWidget):
         f_lay.addWidget(clear_filters_btn)
         transform_tab_layout.addWidget(self.filter_group)
 
+        self.uniquify_group = QGroupBox("Уникализация")
+        self.uniquify_group.setCheckable(True)
+        self.uniquify_group.setChecked(False)
+        self.uniquify_group.setToolTip(
+            "Незаметные изменения, свои для каждого файла.\n\n"
+            "Меняют отпечаток файла и звука. Отражение, поворот и цвет сюда не "
+            "входят намеренно: модели поиска копий обучают на этих же "
+            "преобразованиях, поэтому они на них не реагируют — их держите "
+            "среди фильтров, когда нужен именно вид.\n\n"
+            "Никакой набор правок не заменяет переработку содержания: "
+            "площадки оценивают оригинальность отдельно от совпадения кадров.")
+        uq_layout = QVBoxLayout(self.uniquify_group)
+        uq_layout.setSpacing(10)
+
+        self.uq_trim_cb = QCheckBox("Срезать начало и конец")
+        self.uq_trim_cb.setChecked(True)
+        self.uq_trim_cb.setToolTip(
+            "Убирает 0,1–0,4 с в начале и 0,15–0,6 с в конце, каждый раз по-разному.\n\n"
+            "Сдвигает всю временную нарезку, по которой строится отпечаток.\n"
+            "Глубже в первую секунду не режем: она удерживает зрителя.")
+
+        self.uq_pitch_cb = QCheckBox("Сдвигать тон звука")
+        self.uq_pitch_cb.setChecked(True)
+        self.uq_pitch_cb.setToolTip(
+            "Сдвиг до 0,6% — на слух не различить.\n\n"
+            "Единственный приём с прямым подтверждением в исследованиях: "
+            "звуковые отпечатки устойчивы к сжатию и шуму, но не переносят "
+            "изменения тона и темпа.")
+
+        self.uq_speed_cb = QCheckBox("Менять скорость на ±3%")
+        self.uq_speed_cb.setChecked(False)
+        self.uq_speed_cb.setToolTip(
+            "Растягивает или сжимает видео и звук вместе.\n\n"
+            "Задевает и картинку, и звук. До 4% незаметно; выше начинает "
+            "слышаться неестественный темп речи.\n"
+            "Не сочетается с ручной настройкой скорости — она важнее.")
+
+        self.uq_encode_cb = QCheckBox("Своё качество сжатия")
+        self.uq_encode_cb.setChecked(True)
+        self.uq_encode_cb.setToolTip(
+            "Каждый раз своё качество (CRF 19–23) и свой размер группы кадров.\n\n"
+            "Меняет каждый байт файла, на картинке не сказывается. "
+            "Само по себе обходит только сверку по хешу файла.")
+
+        for cb in (self.uq_trim_cb, self.uq_pitch_cb,
+                   self.uq_speed_cb, self.uq_encode_cb):
+            uq_layout.addWidget(cb)
+
+        transform_tab_layout.addWidget(self.uniquify_group)
+
         self.zoom_group = QGroupBox("Zoom (приближение)")
+
+        self.zoom_group.setToolTip(
+
+
+            "Приближение кадра в процентах.\n\nДиапазон задаёт случайное значение для каждого файла.")
         zg_lay = QVBoxLayout(self.zoom_group)
         z_mode = QHBoxLayout()
         self.zoom_static_radio = QRadioButton("Статическое (%):")
@@ -425,6 +482,11 @@ class ProcessingWidgetContent(QWidget):
         transform_tab_layout.addWidget(self.zoom_group)
 
         self.speed_group = QGroupBox("Скорость")
+
+        self.speed_group.setToolTip(
+
+
+            "Ускорение или замедление видео вместе со звуком.\n\nДиапазон задаёт случайное значение для каждого файла.")
         sp_lay = QVBoxLayout(self.speed_group)
         sp_mode = QHBoxLayout()
         self.speed_static_radio = QRadioButton("Статическое (%):")
@@ -468,15 +530,13 @@ class ProcessingWidgetContent(QWidget):
 
         # === EFFECTS TAB ===
         self.split_group = QGroupBox("Разделение экрана (залипалка)")
+        self.split_group.setToolTip(
+
+            "Кадр делится на две панели: ваш контент и зацикленное фоновое видео.\n\nТребуется формат Reels/TikTok.")
         self.split_group.setCheckable(True)
         self.split_group.setChecked(False)
         split_lay = QVBoxLayout(self.split_group)
 
-        split_hint = QLabel(
-            "Кадр делится на две панели: ваш контент и зацикленное фоновое видео. "
-            "Требуется формат Reels/TikTok.")
-        split_hint.setWordWrap(True)
-        split_lay.addWidget(split_hint)
 
         row_filler = QHBoxLayout()
         row_filler.addWidget(QLabel("Залипалка:"))
@@ -517,6 +577,11 @@ class ProcessingWidgetContent(QWidget):
         main_tab_layout.addWidget(self.split_group)
 
         self.overlay_group = QGroupBox("Наложение (баннер)")
+
+        self.overlay_group.setToolTip(
+
+
+            "Картинка поверх видео: водяной знак, логотип, рамка.\n\nПоддерживаются PNG, JPG и GIF.")
         ov_lay = QVBoxLayout(self.overlay_group)
         row_ol = QHBoxLayout()
         self.overlay_path = QLineEdit()
@@ -541,6 +606,11 @@ class ProcessingWidgetContent(QWidget):
         transform_tab_layout.addWidget(self.overlay_group)
 
         self.subs_group = QGroupBox("Субтитры")
+
+        self.subs_group.setToolTip(
+
+
+            "Из готового файла SRT или распознанные автоматически.\n\nПри первом распознавании модель скачивается из интернета.")
         subs_main_layout = QVBoxLayout(self.subs_group)
         self.subs_mode_group = QButtonGroup()
         subs_mode_layout = QHBoxLayout()
@@ -613,6 +683,9 @@ class ProcessingWidgetContent(QWidget):
 
         # === AUDIO TAB ===
         self.mute_group = QGroupBox("Управление звуком")
+        self.mute_group.setToolTip(
+
+            "Громкость оригинальной дорожки и её отключение.")
         mute_layout = QVBoxLayout(self.mute_group)
         self.mute_checkbox = QCheckBox("Удалить оригинальный звук из видео")
         mute_layout.addWidget(self.mute_checkbox)
@@ -630,6 +703,11 @@ class ProcessingWidgetContent(QWidget):
         audio_tab_layout.addWidget(self.mute_group)
 
         self.overlay_audio_group = QGroupBox("Наложение аудио")
+
+        self.overlay_audio_group.setToolTip(
+
+
+            "Фоновая музыка или озвучка поверх оригинального звука.\n\nГромкость обеих дорожек настраивается отдельно.")
         overlay_audio_layout = QVBoxLayout(self.overlay_audio_group)
 
         ol_audio_path_layout = QHBoxLayout()
@@ -1026,7 +1104,13 @@ class ProcessingWidgetContent(QWidget):
             filler_path=self.get_filler_path(),
             split_content_height=self.split_layout_combo.currentData(),
             content_on_top=self.split_pos_combo.currentText() == SPLIT_CONTENT_TOP,
-            uniquify=self.uniquify_checkbox.isChecked()
+            uniquify=self.uniquify_group.isChecked(),
+            uniquify_methods={
+                'trim': self.uq_trim_cb.isChecked(),
+                'pitch': self.uq_pitch_cb.isChecked(),
+                'speed': self.uq_speed_cb.isChecked(),
+                'encode': self.uq_encode_cb.isChecked(),
+            }
         )
 
         self.processing_thread.progress.connect(self.on_prog)
@@ -1120,8 +1204,11 @@ class VideoUnicApp(QMainWindow):
         # Подгоняемся под экран: 1150x800 не помещается на HD-ноутбуке, где
         # рабочая область около 1366x730.
         available = QApplication.primaryScreen().availableGeometry()
-        width = min(1150, available.width() - 80)
-        height = min(800, available.height() - 80)
+        # Занимаем большую часть экрана. Жёсткий потолок в 800 px оставлял на
+        # мониторе 2560x1440 половину высоты пустой, и окно приходилось тянуть
+        # руками каждый запуск.
+        width = min(1400, int(available.width() * 0.70))
+        height = max(560, int(available.height() * 0.88))
         self.resize(width, height)
         self.move(available.left() + (available.width() - width) // 2,
                   available.top() + (available.height() - height) // 2)

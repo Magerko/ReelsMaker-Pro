@@ -254,6 +254,13 @@ QCheckBox::indicator:disabled {{
     background-color: {surface};
     border-color: {border};
 }}
+/* Отмеченная, но неактивная галочка. Без этого правила предыдущее затирает
+   заливку, и внутри выключенной группы выбор выглядит потерянным. */
+QCheckBox::indicator:checked:disabled,
+QRadioButton::indicator:checked:disabled {{
+    background-color: {accent_bg};
+    border-color: {border_strong};
+}}
 
 QListWidget {{
     background-color: {surface_alt};

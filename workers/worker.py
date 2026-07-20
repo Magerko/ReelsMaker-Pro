@@ -46,6 +46,7 @@ class Worker(QThread):
             split_content_height: int = 1080,
             content_on_top: bool = True,
             uniquify: bool = False,
+            uniquify_methods: dict = None,
     ):
         super().__init__()
         self.files = list(files)
@@ -75,6 +76,7 @@ class Worker(QThread):
         self.split_content_height = split_content_height
         self.content_on_top = content_on_top
         self.uniquify = uniquify
+        self.uniquify_methods = uniquify_methods or {}
         self._is_running = True
         self.output_paths = []
 
@@ -192,6 +194,7 @@ class Worker(QThread):
                     split_content_height=self.split_content_height,
                     content_on_top=self.content_on_top,
                     uniquify=self.uniquify,
+                    uniquify_methods=self.uniquify_methods,
                     progress_callback=self.file_progress.emit
                 )
                 self.output_paths.append(out_file_path)
