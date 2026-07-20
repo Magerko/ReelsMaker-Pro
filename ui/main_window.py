@@ -123,7 +123,10 @@ class SettingsDialog(QDialog):
 
     def init_ui(self):
         self.setWindowTitle("Настройки")
-        self.setFixedSize(450, 280)
+        # Жёсткий размер сплющивал поле пути: текст в нём обрезался сверху и
+        # снизу. Даём окну расти под содержимое.
+        self.setMinimumSize(520, 320)
+        self.resize(520, 320)
         self.setObjectName("settings_dialog")
 
         layout = QVBoxLayout(self)

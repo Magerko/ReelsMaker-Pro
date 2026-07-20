@@ -192,6 +192,9 @@ QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit {{
     border: 1px solid {border};
     border-radius: 6px;
     padding: 6px 10px;
+    /* Иначе в тесной разметке поле сжимается ниже строки, и текст обрезается
+       сверху и снизу — так было с путём к FFmpeg в настройках. */
+    min-height: 20px;
     selection-background-color: {accent_deep};
     selection-color: #ffffff;
 }}
