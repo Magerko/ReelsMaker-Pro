@@ -5,9 +5,9 @@ import subprocess
 import uuid
 from typing import List, Optional, Dict
 
-from utils.ffmpeg_utils import process_single, detect_crop_dimensions
+from utils.ffmpeg_utils import process_single, detect_crop_dimensions, pick_random_filler
 from utils.subtitle_utils import extract_audio, generate_srt_from_whisper
-
+from utils.constants import RANDOM_FILLER
 
 class Worker(QThread):
     progress = pyqtSignal(int, int)
